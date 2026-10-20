@@ -865,14 +865,15 @@ function buildHouseInner(cx, cz, baseY, w, d, rot, style) {
       const dOff = (w <= d ? d : w) * 0.22;
       const alongZ = w <= d;
       const dormHex = wallHex;
+      const dormSpan = (alongZ ? d : w) + 0.5;
       if (alongZ) {
-        hbox(dormHex, cx - span / 2 + 0.4, dormY, cz + dOff, 1.4, 1.2, 1.4, roofCol);
-        hbox(0x9fc8e8, cx - span / 2 + 0.15, dormY + 0.2, cz + dOff, 0.1, 0.7, 0.8, roofCol);
-        hbox(shadC, cx - span / 2 + 0.4, dormY + 1.25, cz + dOff, 1.6, 0.15, 1.6, roofCol);
+        hbox(dormHex, cx - dormSpan / 2 + 0.4, dormY, cz + dOff, 1.4, 1.2, 1.4, roofCol);
+        hbox(0x9fc8e8, cx - dormSpan / 2 + 0.15, dormY + 0.2, cz + dOff, 0.1, 0.7, 0.8, roofCol);
+        hbox(shadC, cx - dormSpan / 2 + 0.4, dormY + 1.25, cz + dOff, 1.6, 0.15, 1.6, roofCol);
       } else {
-        hbox(dormHex, cx + dOff, dormY, cz - span / 2 + 0.4, 1.4, 1.2, 1.4, roofCol);
-        hbox(0x9fc8e8, cx + dOff, dormY + 0.2, cz - span / 2 + 0.15, 0.8, 0.7, 0.1, roofCol);
-        hbox(shadC, cx + dOff, dormY + 1.25, cz - span / 2 + 0.4, 1.6, 0.15, 1.6, roofCol);
+        hbox(dormHex, cx + dOff, dormY, cz - dormSpan / 2 + 0.4, 1.4, 1.2, 1.4, roofCol);
+        hbox(0x9fc8e8, cx + dOff, dormY + 0.2, cz - dormSpan / 2 + 0.15, 0.8, 0.7, 0.1, roofCol);
+        hbox(shadC, cx + dOff, dormY + 1.25, cz - dormSpan / 2 + 0.4, 1.6, 0.15, 1.6, roofCol);
       }
     }
   }
