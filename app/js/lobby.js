@@ -439,7 +439,7 @@ function shopToday() {
 }
 function shopCard(p) {
   const it = itemOf(p.cat, p.id), own = S.owned.has(p.cat + ':' + p.id), RR = RARITIES[it.rarity];
-  return `<div class="sitem r-${it.rarity}" style="--rc:${RR.color}" data-c="${p.cat}" data-id="${p.id}" data-p="${p.price}"><img alt="" src="${thumb(p.cat, p.id)}">${own ? '<span class="si-owned">POSSÉDÉ</span>' : ''}</div>`;
+  return `<div class="sitem r-${it.rarity}" style="--rc:${RR.color}" data-c="${p.cat}" data-id="${p.id}" data-p="${p.price}"><img alt="" src="${thumb(p.cat, p.id)}">${own ? '<span class="si-owned">POSSÉDÉ</span>' : ''}<div class="si-bottom"><div class="si-name">${it.name}</div><div class="si-price"><i class="coin"></i><span>${fmt(p.price)}</span></div></div></div>`;
 }
 function renderShop() {
   const { featured, daily } = shopToday();

@@ -1769,24 +1769,63 @@ const leaderboard = [];
   addBox(g, 1.1, 1.9, 0.12, 0, -0.05, 4.68, blueDark);
   addBox(g, 1.45, 0.22, 0.7, 0, -1.58, 4.95, gold);
   for (const x of [-1.2, 1.2]) addBox(g, 0.08, 0.75, 0.08, x, -0.9, 4.35, steel);
-  // Quatre câbles d'acier relient le toit au ballon captif.
-  for (const [x, z] of [[-1.2, -2.5], [1.2, -2.5], [-1.2, 2.5], [1.2, 2.5]]) {
-    const cable = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 5.0, 6), steel);
-    cable.position.set(x, 4.0, z); g.add(cable);
-    addBox(g, 0.22, 0.12, 0.22, x, 1.55, z, gold);
+  // Feux arrière rouges visibles pendant le vol.
+  for (const x of [-1.3, 1.3]) addBox(g, 0.16, 0.3, 0.08, x, 0.15, 4.66, matC(0xff2a2a, { emissive: 0xd01010, emissiveIntensity: 1.6 }));
+  // Montgolfière segmentée : bandes verticales alternées blanc / turquoise, en forme de goutte.
+  {
+    const prof = [];
+    for (let i = 0; i <= 16; i++) {
+      const t = i / 16; // 0 = col bas, 1 = sommet
+      const y = t * 2.3;
+      let r;
+      if (t < 0.18) r = 0.34 + (t / 0.18) * 0.26;          // col puis évasement
+      else if (t < 0.55) r = 0.6 + Math.sin((t - 0.18) / 0.37 * Math.PI * 0.5) * 0.42; // panse
+      else r = 1.02 * (1 - (t - 0.55) / 0.45) ** 0.6 + 0.001; // dôme arrondi
+      prof.push(new THREE.Vector2(r, y));
+    }
+    const white = matC(0xe9f7fb, { roughness: 0.42, metalness: 0.03 });
+    const teal = matC(0x35c8dd, { roughness: 0.42, metalness: 0.03 });
+    const tealDark = matC(0x1fa8c9, { roughness: 0.42, metalness: 0.03 });
+    const gores = 14, gorePhi = Math.PI * 2 / gores;
+    for (let i = 0; i < gores; i++) {
+      const mat = i % 2 ? white : (i % 4 === 0 ? tealDark : teal);
+      const gore = new THREE.Mesh(new THREE.LatheGeometry(prof, 4, i * gorePhi, gorePhi + 0.02), mat);
+      gore.position.y = 8.6; gore.castShadow = true; g.add(gore);
+    }
+    // Bande turquoise près du col + sommet doré.
+    const band = new THREE.Mesh(new THREE.TorusGeometry(0.88, 0.07, 8, 40), tealDark);
+    band.position.y = 8.85; band.rotation.x = Math.PI / 2; band.scale.set(1, 1, 1.25); g.add(band);
+    const cap = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.35), gold);
+    cap.position.y = 10.88; cap.scale.set(0.5, 0.55, 0.5); g.add(cap);
   }
-  const balloon = new THREE.Mesh(new THREE.SphereGeometry(1, 32, 20), matC(0x238bfa, { roughness: 0.34, metalness: 0.04 }));
-  balloon.position.y = 8.35; balloon.scale.set(4.15, 4.8, 5.7); balloon.castShadow = true; g.add(balloon);
-  const stripe = new THREE.Mesh(new THREE.TorusGeometry(4.2, 0.2, 10, 48), gold); stripe.position.y = 8.2; stripe.rotation.x = Math.PI / 2; stripe.scale.set(1, 1, 1.28); g.add(stripe);
-  const cap = new THREE.Mesh(new THREE.SphereGeometry(1, 16, 10), gold); cap.position.set(0, 12.75, 0); cap.scale.set(0.8, 0.28, 0.8); g.add(cap);
-  for (const [x, z] of [[-1.2, -2], [1.2, -2], [-1.2, 2], [1.2, 2]]) addBox(g, 0.06, 4.5, 0.06, x, 3.6, z, matC(0x333333));
-  // Étoile de la montgolfière, emblème jaune visible sur les deux flancs.
+  // Nacelle brûleur suspendue sous le ballon : cadre sombre + flamme émissive.
+  {
+    const dark = matC(0x2a2f38, { roughness: 0.6, metalness: 0.35 });
+    addBox(g, 1.35, 0.5, 1.35, 0, 5.55, 0, dark);
+    addBox(g, 1.0, 0.55, 1.0, 0, 6.05, 0, dark);
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.6, 10), matC(0xffa030, { emissive: 0xff7a10, emissiveIntensity: 2.2, roughness: 0.4 }));
+    flame.position.set(0, 5.1, 0); flame.rotation.x = Math.PI; g.add(flame);
+    // Haubans nacelle -> ballon, et cadre de fixation sur le toit du bus.
+    for (const [x, z] of [[-0.62, -0.62], [0.62, -0.62], [-0.62, 0.62], [0.62, 0.62]]) {
+      const c = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 1.5, 6), steel);
+      c.position.set(x * 0.7, 6.9, z * 0.7); c.lookAt(0, 8.3, 0); c.rotateX(Math.PI / 2); g.add(c);
+    }
+    const frame = matC(0x6a4a28, { roughness: 0.7 });
+    addBox(g, 3.2, 0.16, 6.4, 0, 1.62, 0, frame);
+    for (const [x, z] of [[-1.5, -3.0], [1.5, -3.0], [-1.5, 3.0], [1.5, 3.0]]) addBox(g, 0.14, 0.14, 0.14, x, 1.75, z, steel);
+    // Quatre câbles d'acier : cadre du toit -> nacelle.
+    for (const [x, z] of [[-1.5, -3.0], [1.5, -3.0], [-1.5, 3.0], [1.5, 3.0]]) {
+      const c = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.045, 3.6, 6), steel);
+      c.position.set(x * 0.65, 3.7, z * 0.65); c.lookAt(x, 5.9, z); c.rotateX(Math.PI / 2); g.add(c);
+    }
+  }
+  // Emblème doré sur les flancs de la nacelle.
   const starShape = new THREE.Shape();
-  for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5 - Math.PI / 2, r = i % 2 ? 0.38 : 0.9; if (i === 0) starShape.moveTo(Math.cos(a) * r, Math.sin(a) * r); else starShape.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
+  for (let i = 0; i < 10; i++) { const a = i * Math.PI / 5 - Math.PI / 2, r = i % 2 ? 0.18 : 0.42; if (i === 0) starShape.moveTo(Math.cos(a) * r, Math.sin(a) * r); else starShape.lineTo(Math.cos(a) * r, Math.sin(a) * r); }
   starShape.closePath();
   const starGeo = new THREE.ShapeGeometry(starShape);
-  const starMat = matC(0xffdf43, { side: THREE.DoubleSide, emissive: 0x7c5300, emissiveIntensity: 0.25 });
-  for (const side of [-1, 1]) { const star = new THREE.Mesh(starGeo, starMat); star.position.set(side * 4.07, 8.5, 0); star.rotation.y = side * Math.PI / 2; star.scale.setScalar(1.35); g.add(star); }
+  const starMat = matC(0xffdf43, { side: THREE.DoubleSide, emissive: 0x7c5300, emissiveIntensity: 0.3 });
+  for (const side of [-1, 1]) { const star = new THREE.Mesh(starGeo, starMat); star.position.set(side * 0.69, 5.55, 0); star.rotation.y = side * Math.PI / 2; g.add(star); }
   g.traverse((m) => { if (m.isMesh) m.castShadow = true; });
   g.visible = false; scene.add(g); bus.mesh = g;
 }
@@ -2868,8 +2907,8 @@ function buildSpyPOI(p) {
     makeStructBox(p.x, p.h + 4.2, mz, 15.6, 0.4, 10.6, matC(DK), { indestructible: true });
     // escalier extérieur le long de la façade sud : 7 marches + palier haut vers la terrasse
     // (placé au-delà du débord de la dalle pour ne pas bloquer la tête du joueur)
-    for (let s = 0; s < 7; s++) makeStructBox(p.x - 6.5 + s * 1.2, p.h + s * 0.55, mz + 6.5, 1.25, 0.55, 2.2, matC(M, { roughness: 0.5 }), { indestructible: true });
-    makeStructBox(p.x + 2.1, p.h + 7 * 0.55, mz + 6.5, 2.2, 0.55, 2.2, matC(M, { roughness: 0.5 }), { indestructible: true }); // palier (après la marche 6)
+    for (let s = 0; s < 7; s++) makeStructBox(p.x - 6.5 + s * 1.2, p.h, mz + 6.5, 1.25, 0.55 + s * 0.55, 2.2, matC(M, { roughness: 0.5 }), { indestructible: true });
+    makeStructBox(p.x + 2.1, p.h, mz + 6.5, 2.2, 0.55 + 7 * 0.55, 2.2, matC(M, { roughness: 0.5 }), { indestructible: true }); // palier (après la marche 6)
     // auvent sur la terrasse : piliers or + dalle sombre
     for (const [px2, pz2] of [[-5, -3], [1, -3], [-5, 3], [1, 3]]) makeStructBox(p.x + px2, p.h + 4.6, mz + pz2, 0.35, 3, 0.35, matC(0xffc400, { metalness: 0.6 }), { indestructible: true });
     makeStructBox(p.x - 2, p.h + 7.6, mz, 8.6, 0.35, 8.6, matC(DK), { indestructible: true });

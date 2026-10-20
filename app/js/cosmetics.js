@@ -283,8 +283,8 @@ export function makeCharMesh(cos) {
   // --- torse : bassin, ceinture, torse en deux volumes, col, détails ---
   const torso = new THREE.Group(); torso.position.y = 0.88;
   box(torso, 0.58, 0.22, 0.36, 0, 0.09, 0, pants); // bassin
-  box(torso, 0.6, 0.07, 0.38, 0, 0.21, 0, s.accent !== undefined ? mat(s.accent) : dark); // ceinture
-  box(torso, 0.09, 0.06, 0.03, 0, 0.21, -0.19, metal); // boucle
+  box(torso, 0.62, 0.09, 0.40, 0, 0.21, 0, s.accent !== undefined ? mat(s.accent) : dark); // ceinture
+  box(torso, 0.09, 0.07, 0.05, 0, 0.21, -0.21, metal); // boucle
   box(torso, 0.14, 0.12, 0.05, -0.2, 0.1, -0.17, dark); // poche de cuisse
   box(torso, 0.62, 0.28, 0.38, 0, 0.33, 0, shirt); // torse bas
   box(torso, 0.68, 0.28, 0.4, 0, 0.56, 0, shirt); // torse haut (épaules)
