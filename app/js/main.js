@@ -357,7 +357,89 @@ function makeStructBox(x, y, z, w, h, d, mat, o = {}) {
 // Static batching: every building is drawn as ONE merged mesh with vertex colours
 // (walls + decorations). Destroying a wall rebuilds that building's mesh only.
 let curHouse = null;
-const HOUSE_MAT = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0.02 });
+const HOUSE_MAT = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.78, metalness: 0.06 });
+// Rendu réaliste style Fortnite Chapitre 2 : bardage bois en lattes (siding), joints de brique,
+// tuiles d'ardoise sur les toits, reflets bleutés sur vitres, et dorures étincelantes des agents.
+HOUSE_MAT.onBeforeCompile = (sh) => {
+  sh.vertexShader = sh.vertexShader
+    .replace('#include <common>', '#include <common>\nvarying vec3 vWP;\nvarying vec3 vNorm;')
+    .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvWP = (modelMatrix * vec4(transformed, 1.0)).xyz;\nvNorm = normalize((modelMatrix * vec4(normal, 0.0)).xyz);');
+
+  sh.fragmentShader = sh.fragmentShader
+    .replace('#include <common>', `#include <common>
+      varying vec3 vWP;
+      varying vec3 vNorm;
+      float bHash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float bNoise(vec2 p) {
+        vec2 i = floor(p), f = fract(p);
+        f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(bHash(i), bHash(i + vec2(1.0, 0.0)), f.x), mix(bHash(i + vec2(0.0, 1.0)), bHash(i + vec2(1.0, 1.0)), f.x), f.y);
+      }`)
+    .replace('#include <color_fragment>', `#include <color_fragment>
+      vec3 fn = normalize(cross(dFdx(vWP), dFdy(vWP)));
+      float isVert = smoothstep(0.35, 0.12, abs(fn.y));
+      float isRoof = smoothstep(0.18, 0.45, fn.y) * smoothstep(0.96, 0.82, fn.y);
+      
+      // Détection des types de surfaces d'après leur teinte
+      float isGlass = step(0.1, diffuseColor.b - diffuseColor.r) * step(0.4, diffuseColor.b + diffuseColor.g);
+      float isDarkGlass = step(0.05, diffuseColor.b - diffuseColor.r) * step(length(diffuseColor.rgb), 0.35);
+      float isGold = step(0.65, diffuseColor.r) * step(0.48, diffuseColor.g) * step(diffuseColor.b, 0.28);
+      float isWhiteMarble = step(0.82, diffuseColor.r) * step(0.82, diffuseColor.g) * step(0.78, diffuseColor.b);
+      float isBrickOrStone = step(0.3, diffuseColor.r) * step(abs(diffuseColor.r - diffuseColor.g), 0.25) * (1.0 - isGold);
+
+      // 1. MURS VERTICAUX : BARDAGE BOIS & BRIQUES FORTNITE
+      if (isVert > 0.1 && (isGlass + isDarkGlass) < 0.5) {
+        // Bardage en lattes horizontales réaliste (siding Fortnite ~0.38 m par planche)
+        float plankY = mod(vWP.y, 0.38);
+        float groove = smoothstep(0.0, 0.035, plankY) * (1.0 - smoothstep(0.345, 0.38, plankY));
+        float siding = 0.92 + groove * 0.14 + smoothstep(0.035, 0.12, plankY) * 0.05;
+
+        // Briques et pierres appareillées pour les façades de ville / brique
+        if (isBrickOrStone > 0.5 && isWhiteMarble < 0.5) {
+          float bRow = floor(vWP.y / 0.28);
+          float coordX = abs(fn.x) > 0.5 ? vWP.z : vWP.x;
+          float bCol = mod(coordX + bRow * 0.44, 0.88);
+          float mortar = smoothstep(0.0, 0.035, mod(vWP.y, 0.28)) * smoothstep(0.0, 0.045, bCol);
+          diffuseColor.rgb *= 0.86 + 0.18 * mortar;
+        } else if (isWhiteMarble > 0.5) {
+          // Marbre blanc lisse de l'Agence avec joints subtils de blocs impériaux (1.5 m)
+          float pY = smoothstep(0.0, 0.03, mod(vWP.y, 1.5)) * (1.0 - smoothstep(1.47, 1.5, mod(vWP.y, 1.5)));
+          float pX = smoothstep(0.0, 0.03, mod(vWP.x + vWP.z, 2.0)) * (1.0 - smoothstep(1.97, 2.0, mod(vWP.x + vWP.z, 2.0)));
+          diffuseColor.rgb *= 0.94 + 0.06 * (pY * pX);
+        } else {
+          // Bois peint style Pleasant Park
+          float grain = (bNoise(vWP.xz * 1.8 + vWP.y * 0.5) - 0.5) * 0.06;
+          diffuseColor.rgb *= (siding + grain);
+        }
+
+        // Occlusion ambiante de contact au bas des murs (base ancrée dans le terrain)
+        float contactAO = smoothstep(0.0, 1.1, mod(vWP.y + 0.1, 4.0));
+        diffuseColor.rgb *= 0.87 + 0.13 * contactAO;
+      }
+
+      // 2. VITRES & BAIES VITRÉES : REFLETS DYNA-CYAN STYLE FORTNITE
+      if (isGlass > 0.5 || isDarkGlass > 0.5) {
+        float glGleam = pow(max(0.0, sin((vWP.x + vWP.z) * 0.65 + vWP.y * 1.1)), 10.0) * 0.4;
+        vec3 tint = isDarkGlass > 0.5 ? vec3(0.35, 0.5, 0.65) : vec3(0.82, 0.93, 1.0);
+        diffuseColor.rgb = mix(diffuseColor.rgb, tint, glGleam * 0.8);
+      }
+
+      // 3. TOITURES : STRATES DE TUILES ET BARDEAUX D'ARDOISE
+      if (isRoof > 0.2) {
+        float shingleY = mod(vWP.y, 0.26);
+        float shStep = 0.88 + smoothstep(0.0, 0.03, shingleY) * 0.22;
+        float shRow = floor(vWP.y / 0.26);
+        float tone = 0.95 + 0.1 * fract(sin(shRow * 91.13) * 43758.5453);
+        diffuseColor.rgb *= shStep * tone;
+      }
+
+      // 4. DORURES & MÉTAL PRÉCIEUX DES AGENTS (Midas, coffre, yacht, agence)
+      if (isGold > 0.5) {
+        float shine = pow(max(0.0, sin((vWP.x + vWP.y + vWP.z) * 1.8)), 8.0) * 0.45;
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0, 0.96, 0.7), shine);
+      }
+    `);
+};
 const _hcCache = new Map();
 function hcol(hex) { let c = _hcCache.get(hex); if (!c) { c = new THREE.Color(hex); _hcCache.set(hex, c); } return c; }
 function colorize(g, c) {
@@ -777,6 +859,22 @@ function buildHouseInner(cx, cz, baseY, w, d, rot, style) {
     const roofH = style === 'chalet' ? 3.6 : style === 'beach' ? 1.8 : 2.6;
     const shadC = style === 'chalet' ? 0x6e4a30 : style === 'brick' ? pick([0x8a4a3a, 0x6b5548, 0x5a6a75]) : style === 'beach' ? pick([0xc98a4a, 0x4a9a7a, 0x7a8a9a]) : pick([0x7a5535, 0x5a4a3a, 0x94553a]);
     gableRoof(cx, cz, topY + 0.35, w, d, roofH, wallHex, roofHex, { parent: roofCol, snow: style === 'chalet', drain: true, shingles: shadC, chimney: style === 'beach' ? 0 : style === 'chalet' ? 0x8d8a84 : 0xa0523d, trim: frame });
+    // Lucarnes de toit (dormers) sur grandes toitures pour le charme architectural Fortnite
+    if (w >= 10 && d >= 8 && style !== 'adobe') {
+      const dormY = topY + roofH * 0.42;
+      const dOff = (w <= d ? d : w) * 0.22;
+      const alongZ = w <= d;
+      const dormHex = wallHex;
+      if (alongZ) {
+        hbox(dormHex, cx - span / 2 + 0.4, dormY, cz + dOff, 1.4, 1.2, 1.4, roofCol);
+        hbox(0x9fc8e8, cx - span / 2 + 0.15, dormY + 0.2, cz + dOff, 0.1, 0.7, 0.8, roofCol);
+        hbox(shadC, cx - span / 2 + 0.4, dormY + 1.25, cz + dOff, 1.6, 0.15, 1.6, roofCol);
+      } else {
+        hbox(dormHex, cx + dOff, dormY, cz - span / 2 + 0.4, 1.4, 1.2, 1.4, roofCol);
+        hbox(0x9fc8e8, cx + dOff, dormY + 0.2, cz - span / 2 + 0.15, 0.8, 0.7, 0.1, roofCol);
+        hbox(shadC, cx + dOff, dormY + 1.25, cz - span / 2 + 0.4, 1.6, 0.15, 1.6, roofCol);
+      }
+    }
   }
   if (style === 'beach' && R() < 0.8) { // surfboard + deck chair outside
     const s = sides[(rot + 1) % 4];
@@ -1172,8 +1270,9 @@ function rampH(c, x, z) {
   return c.y + clamp(t, 0, 1) * CELL;
 }
 function coneH(c, x, z) {
-  const lx = Math.abs(x - (c.cx * CELL + PIECE)) / PIECE, lz = Math.abs(z - (c.cz * CELL + PIECE)) / PIECE;
-  const quadrant = z < c.cz * CELL + PIECE ? (x < c.cx * CELL + PIECE ? 0 : 1) : (x >= c.cx * CELL + PIECE ? 2 : 3);
+  const half = CELL / 2;
+  const lx = Math.abs(x - (c.cx * CELL + half)) / half, lz = Math.abs(z - (c.cz * CELL + half)) / half;
+  const quadrant = z < c.cz * CELL + half ? (x < c.cx * CELL + half ? 0 : 1) : (x >= c.cx * CELL + half ? 2 : 3);
   if (c.editMask & (1 << quadrant)) return c.y;
   return c.y + Math.max(0, 1 - Math.max(lx, lz)) * 1.6;
 }
@@ -1210,7 +1309,7 @@ function physics(ch, dt) {
     } else if (c.type === 'ramp' || c.type === 'cone') {
       if (ch.pos.x < c.minX || ch.pos.x > c.maxX || ch.pos.z < c.minZ || ch.pos.z > c.maxZ) continue;
       const h = c.type === 'ramp' ? rampH(c, ch.pos.x, ch.pos.z) : coneH(c, ch.pos.x, ch.pos.z);
-      if (c.type === 'cone' && (c.editMask & (1 << (ch.pos.z < c.cz * PIECE * 2 + PIECE ? (ch.pos.x < c.cx * PIECE * 2 + PIECE ? 0 : 1) : (ch.pos.x >= c.cx * PIECE * 2 + PIECE ? 2 : 3))))) continue;
+      if (c.type === 'cone' && (c.editMask & (1 << (ch.pos.z < c.cz * CELL + CELL / 2 ? (ch.pos.x < c.cx * CELL + CELL / 2 ? 0 : 1) : (ch.pos.x >= c.cx * CELL + CELL / 2 ? 2 : 3))))) continue;
       if (h <= oldY + STEP + 0.35 && h > ground) { ground = h; onTerrain = false; gcol = c; }
       else if (c.type === 'cone' && ch.vel.y > 0 && oldY + CH_H <= c.minY + 0.15 && ch.pos.y + CH_H > c.minY) { ch.pos.y = c.minY - CH_H; ch.vel.y = 0; }
     }
@@ -1331,14 +1430,14 @@ function updateDmgNums(dt) {
 // =====================================================================
 const builds = new Map();
 const buildList = [];
-const PIECE = CELL; // sols et cônes Fortnite : 2×2 cases de construction, soit 8×8 m ici
+// Grille de construction modulaire Fortnite : 1 case = 1 cellule CELL (4×4 m)
+// Tous les éléments (murs, sols, rampes, cônes) font exactement 1 cellule (4 m).
 const wallGeo = new THREE.BoxGeometry(CELL, CELL, 0.22);
-const floorGeo = new THREE.BoxGeometry(PIECE * 2, 0.22, PIECE * 2);
-const rampGeo = new THREE.BoxGeometry(PIECE * 2, 0.22, PIECE * 2 * Math.SQRT2 + 0.1);
+const floorGeo = new THREE.BoxGeometry(CELL, 0.22, CELL);
+const rampGeo = new THREE.BoxGeometry(CELL, 0.22, CELL * Math.SQRT2 + 0.05);
 function makeConeGeometry(mask = 0) {
   const parts = [];
-  // Le cône occupe exactement 2×2 cellules de 4 m (8×8 m au total).
-  const half = PIECE;
+  const half = CELL / 2; // 2 m de rayon = 4 m de base (1 case modulaire exacte)
   const vertices = [
     [[-half, 0, -half], [half, 0, -half], [0, 1.6, 0]],
     [[half, 0, -half], [half, 0, half], [0, 1.6, 0]],
@@ -1365,11 +1464,16 @@ function normWall(cx, cz, d) {
 function buildKey(type, cx, cz, y, d) { return type === 'wall' ? `w${cx},${cz},${y},${d}` : `${type[0]}${cx},${cz},${y}`; }
 function pieceTransform(type, cx, cz, y, d, obj) {
   obj.rotation.set(0, 0, 0); obj.rotation.order = 'YXZ';
+  const half = CELL / 2;
   if (type === 'wall') {
-    if (d === 0) obj.position.set(cx * CELL + 2, y + 2, cz * CELL); else { obj.position.set(cx * CELL, y + 2, cz * CELL + 2); obj.rotation.y = Math.PI / 2; }
-  } else if (type === 'floor') obj.position.set(cx * CELL + PIECE, y - 0.02, cz * CELL + PIECE);
-  else if (type === 'ramp') { obj.position.set(cx * CELL + PIECE, y + PIECE, cz * CELL + PIECE); obj.rotation.y = d * Math.PI / 2; obj.rotation.x = Math.PI / 4; }
-  else obj.position.set(cx * CELL + PIECE, y, cz * CELL + PIECE);
+    if (d === 0) obj.position.set(cx * CELL + half, y + half, cz * CELL); else { obj.position.set(cx * CELL, y + half, cz * CELL + half); obj.rotation.y = Math.PI / 2; }
+  } else if (type === 'floor') {
+    obj.position.set(cx * CELL + half, y - 0.02, cz * CELL + half);
+  } else if (type === 'ramp') {
+    obj.position.set(cx * CELL + half, y + half, cz * CELL + half); obj.rotation.y = d * Math.PI / 2; obj.rotation.x = Math.PI / 4;
+  } else {
+    obj.position.set(cx * CELL + half, y, cz * CELL + half);
+  }
 }
 function geoFor(type) { return type === 'wall' ? wallGeo : type === 'floor' ? floorGeo : type === 'ramp' ? rampGeo : coneGeo; }
 function overlapsChar(type, cx, cz, y, d) {
@@ -1389,9 +1493,9 @@ function placeBuild(owner, type, cx, cz, y, d, mat) {
   if (type === 'wall') {
     col = d === 0 ? { type: 'box', minX: x0, maxX: x0 + CELL, minZ: z0 - 0.11, maxZ: z0 + 0.11, minY: y, maxY: y + CELL }
       : { type: 'box', minX: x0 - 0.11, maxX: x0 + 0.11, minZ: z0, maxZ: z0 + CELL, minY: y, maxY: y + CELL };
-  } else if (type === 'floor') col = { type: 'box', minX: x0, maxX: x0 + PIECE * 2, minZ: z0, maxZ: z0 + PIECE * 2, minY: y - 0.13, maxY: y + 0.09 };
-  else if (type === 'ramp') col = { type: 'ramp', cx, cz, y, d, minX: x0, maxX: x0 + PIECE * 2, minZ: z0, maxZ: z0 + PIECE * 2, minY: y, maxY: y + PIECE * 2 };
-  else col = { type: 'cone', cx, cz, y, minX: x0, maxX: x0 + PIECE * 2, minZ: z0, maxZ: z0 + PIECE * 2, minY: y, maxY: y + 1.6, editMask: 0 };
+  } else if (type === 'floor') col = { type: 'box', minX: x0, maxX: x0 + CELL, minZ: z0, maxZ: z0 + CELL, minY: y - 0.13, maxY: y + 0.09 };
+  else if (type === 'ramp') col = { type: 'ramp', cx, cz, y, d, minX: x0, maxX: x0 + CELL, minZ: z0, maxZ: z0 + CELL, minY: y, maxY: y + CELL };
+  else col = { type: 'cone', cx, cz, y, minX: x0, maxX: x0 + CELL, minZ: z0, maxZ: z0 + CELL, minY: y, maxY: y + 1.6, editMask: 0 };
   addCollider(col);
   col.mesh = m; col.maxHp = MAT_HP[mat]; col.hp = col.maxHp * START_HP[mat]; col.building = 1.0; col.mat = mat; col.kind = 'build'; col.key = key; col.owner = owner; col.ptype = type; col.editMask = 0;
   m.userData.struct = col; m.scale.setScalar(0.3);
@@ -1444,24 +1548,22 @@ function computeTarget(ch, type, pitch, rot = 0) {
   const d = type === 'ramp' ? (d0 + rot) % 4 : d0;
   const fx = -Math.sin(ch.yaw), fz = -Math.cos(ch.yaw);
   const baseY = Math.floor((ch.pos.y + 0.6) / CELL) * CELL;
-  const pieceGrid = PIECE * 2;
   let cx, cz, y = baseY;
   if (type === 'wall') {
     cx = Math.floor(ch.pos.x / CELL); cz = Math.floor(ch.pos.z / CELL);
-    // if close to the facing edge's far side, keep current cell; if looking down a lot, stay
     if (pitch > 0.55) y = baseY + CELL;
   } else if (type === 'floor') {
-    const tx = ch.pos.x + fx * (pitch < -0.6 ? 0 : pieceGrid + 0.6), tz = ch.pos.z + fz * (pitch < -0.6 ? 0 : pieceGrid + 0.6);
-    cx = Math.floor(tx / pieceGrid); cz = Math.floor(tz / pieceGrid);
+    const tx = ch.pos.x + fx * (pitch < -0.6 ? 0 : CELL * 0.75), tz = ch.pos.z + fz * (pitch < -0.6 ? 0 : CELL * 0.75);
+    cx = Math.floor(tx / CELL); cz = Math.floor(tz / CELL);
     if (pitch > 0.35) y = baseY + CELL;
   } else if (type === 'ramp') {
-    const tx = ch.pos.x + fx * 2.4, tz = ch.pos.z + fz * 2.4;
+    const tx = ch.pos.x + fx * (pitch < -0.6 ? 0 : CELL * 0.75), tz = ch.pos.z + fz * (pitch < -0.6 ? 0 : CELL * 0.75);
     cx = Math.floor(tx / CELL); cz = Math.floor(tz / CELL);
     if (pitch > 0.6) y = baseY + CELL;
   } else {
-    const tx = ch.pos.x + (pitch < -0.3 ? fx * (pieceGrid + 0.6) : 0);
-    const tz = ch.pos.z + (pitch < -0.3 ? fz * (pieceGrid + 0.6) : 0);
-    cx = Math.floor(tx / pieceGrid); cz = Math.floor(tz / pieceGrid);
+    const tx = ch.pos.x + (pitch < -0.3 ? fx * (CELL * 0.75) : 0);
+    const tz = ch.pos.z + (pitch < -0.3 ? fz * (CELL * 0.75) : 0);
+    cx = Math.floor(tx / CELL); cz = Math.floor(tz / CELL);
     y = pitch < -0.3 ? baseY : baseY + CELL;
   }
   return { type, cx, cz, y, d };
@@ -1496,7 +1598,7 @@ const editGrid = new THREE.Group(); const editTiles = [];
   const tg = new THREE.PlaneGeometry(TILE * 0.9, TILE * 0.9);
   for (let n = 0; n < 9; n++) { const m = new THREE.Mesh(tg, editTileMat); m.userData.tile = n; m.renderOrder = 30; editGrid.add(m); editTiles.push(m); }
   // 4 zones éditables distinctes pour le cône 2×2, indexées 0..3 après les 9 cases mur/sol.
-  const coneTile = new THREE.PlaneGeometry(PIECE * 0.82, PIECE * 0.82);
+  const coneTile = new THREE.PlaneGeometry(CELL * 0.42, CELL * 0.42);
   for (let n = 0; n < 4; n++) { const m = new THREE.Mesh(coneTile, editTileMat); m.userData.tile = 9 + n; m.renderOrder = 31; m.visible = false; editGrid.add(m); editTiles.push(m); }
 }
 let editing = null;
@@ -1506,7 +1608,7 @@ function layoutEditGrid(type) {
     if (type === 'wall') { m.visible = n < 9; m.position.set(lx, ly, 0); m.rotation.set(0, 0, 0); }
     else if (type === 'cone') {
       m.visible = n >= 9;
-      if (m.visible) { const q = n - 9, x = q === 0 || q === 3 ? -PIECE / 2 : PIECE / 2, z = q < 2 ? -PIECE / 2 : PIECE / 2; m.position.set(x, 0.84, z); m.rotation.set(-Math.PI / 2, 0, 0); }
+      if (m.visible) { const q = n - 9, x = q === 0 || q === 3 ? -CELL / 4 : CELL / 4, z = q < 2 ? -CELL / 4 : CELL / 4; m.position.set(x, 0.84, z); m.rotation.set(-Math.PI / 2, 0, 0); }
     } else { m.visible = n < 9; m.position.set(lx, 0.13, ly); m.rotation.set(-Math.PI / 2, 0, 0); }
   });
 }
@@ -1546,11 +1648,12 @@ function applyEdit(col, mask) {
   col.mesh.updateMatrixWorld(true);
   if (col.ptype === 'cone') {
     // Collider par pan : un pan retiré du modèle ne bloque plus les joueurs.
-    const centers = [[0, -PIECE / 2], [PIECE / 2, 0], [0, PIECE / 2], [-PIECE / 2, 0]];
+    const half = CELL / 4;
+    const centers = [[0, -half], [half, 0], [0, half], [-half, 0]];
     for (let i = 0; i < 4; i++) {
       if (mask & (1 << i)) continue;
       const p = _v1.set(centers[i][0], 0, centers[i][1]); col.mesh.localToWorld(p);
-      col.subs.push(addCollider({ type: 'cone', cx: col.cx, cz: col.cz, y: col.y, pan: i, minX: p.x - PIECE / 2, maxX: p.x + PIECE / 2, minY: col.y, maxY: col.y + 1.6, minZ: p.z - PIECE / 2, maxZ: p.z + PIECE / 2, parent: col }));
+      col.subs.push(addCollider({ type: 'cone', cx: col.cx, cz: col.cz, y: col.y, pan: i, minX: p.x - half, maxX: p.x + half, minY: col.y, maxY: col.y + 1.6, minZ: p.z - half, maxZ: p.z + half, parent: col }));
     }
     return;
   }
@@ -2687,14 +2790,43 @@ const AGENCY_PAL = { wall: 0xe0ded6, trim: 0xffc400, accent: 0xffc400 };
 function buildSpyPOI(p) {
   if (p.key === 'agency') {
     buildTower(p.x, p.z, p.h, 18, 18, 5, 0, AGENCY_PAL);
-    // statue dorée de Midas sur le parvis
+    // Grand parvis de l'Agence : colonnade majestueuse en marbre blanc & or
     curHouse = { boxes: [], deco: [], mesh: null };
+    // Colonnade d'entrée néoclassique (4 imposantes colonnes avec chapiteaux dorés)
+    for (let c = -2; c <= 2; c++) {
+      if (c === 0) continue;
+      const colX = p.x + c * 3.2, colZ = p.z + 10.4;
+      hdeco(CYL_GEO, 0xf4f1ea, colX, p.h + 5.5, colZ, 1.1, 11, 1.1);
+      hdeco(BOX, 0xffc400, colX, p.h + 11.2, colZ, 1.5, 0.5, 1.5); // chapiteau or
+      hdeco(BOX, 0x3a404c, colX, p.h + 0.25, colZ, 1.6, 0.5, 1.6); // base
+    }
+    // Fronton d'entrée art-déco avec aigle/blason d'or
+    hdeco(BOX, 0xf4f1ea, p.x, p.h + 11.8, p.z + 10.4, 16, 1.0, 2.2);
+    hdeco(BOX, 0xffc400, p.x, p.h + 12.5, p.z + 10.8, 14, 0.35, 0.4);
+    hdeco(CYL_GEO, 0xffc400, p.x, p.h + 12.8, p.z + 11.2, 1.6, 0.25, 1.6, Math.PI / 2, 0, 0); // médaillon central
+    // Caméras de surveillance avec LED rouge clignotante aux 4 coins
+    for (const [cx2, cz2] of [[-9.4, -9.4], [9.4, -9.4], [-9.4, 9.4], [9.4, 9.4]]) {
+      hdeco(BOX, 0x1a1a22, p.x + cx2, p.h + 20, p.z + cz2, 0.5, 0.4, 0.8);
+      hdeco(BOX, 0xff1e42, p.x + cx2, p.h + 20, p.z + cz2 + (cz2 > 0 ? 0.42 : -0.42), 0.18, 0.18, 0.18);
+    }
+    // Dôme verrière centrale sur le toit de l'Agence (atrium de verre)
+    hdeco(CYL_GEO, 0x1f2430, p.x, p.h + 20.6, p.z, 7.5, 0.6, 7.5);
+    hdeco(CYL_GEO, 0x6fd0ff, p.x, p.h + 22.0, p.z, 6.4, 2.4, 6.4);
+    hdeco(BOX, 0xffc400, p.x, p.h + 23.4, p.z, 7.0, 0.3, 0.3);
+    hdeco(BOX, 0xffc400, p.x, p.h + 23.4, p.z, 0.3, 0.3, 7.0);
+
+    // Statue dorée de Midas sur le parvis
     const sx = p.x + 14, sz = p.z - 8;
     hdeco(BOX, 0x39404c, sx, p.h, sz, 3.2, 0.5, 3.2);
     hdeco(BOX, 0x2c313c, sx, p.h + 0.5, sz, 2.4, 0.6, 2.4);
     hdeco(BOX, 0xffc400, sx, p.h + 1.1, sz, 0.9, 1.7, 0.5);
     hdeco(BOX, 0xffc400, sx, p.h + 2.8, sz, 0.6, 0.6, 0.6);
     hdeco(BOX, 0x3fa9ff, sx, p.h + 3.7, sz, 1.1, 1.1, 1.1);
+    // Projecteurs au sol braqués vers la façade
+    for (const [px3, pz3] of [[-10, 15], [10, 15]]) {
+      hdeco(BOX, 0x2c313c, p.x + px3, p.h, p.z + pz3, 0.8, 0.6, 0.8);
+      hdeco(CYL_GEO, 0xffe89e, p.x + px3, p.h + 0.6, p.z + pz3, 0.35, 0.4, 0.35, -Math.PI / 4, 0, 0);
+    }
     { const H = curHouse; curHouse = null; finishHouse(H); }
     // hélipad
     curHouse = { boxes: [], deco: [], mesh: null };
@@ -2756,15 +2888,24 @@ function buildSpyPOI(p) {
     lootSpots.push({ x: p.x + 2, y: p.h + 0.6, z: mz + 2 });
     lootSpots.push({ x: p.x - 2, y: p.h + 4.6, z: mz + 1.5 });
     { const H = curHouse; curHouse = null; finishHouse(H); }
-    // rocher en tête de requin béante à l'entrée du POI
+    // Grotte du Requin géant : mâchoire béante avec rangées de dents acérées
     curHouse = { boxes: [], deco: [], mesh: null };
     const gx = p.x, gz = p.z + p.r * 0.9;
-    for (const sgn of [-1, 1]) hdeco(PRISM_GEO, 0x6b7380, gx + sgn * 3.6, p.h, gz, 2.4, 5, 2.4, 0, sgn * -0.4, 0, null, 'YXZ');
-    hdeco(BOX, 0x59606c, gx - 5, p.h, gz - 1.8, 1.2, 5.4, 1.2, 0, 0, 0.18);
-    hdeco(BOX, 0x59606c, gx + 5, p.h, gz - 1.8, 1.2, 5.4, 1.2, 0, 0, -0.18);
-    hdeco(BOX, 0x59606c, gx, p.h + 4.6, gz - 2.6, 9, 2.2, 4, 0, 0, 0);
-    hdeco(BOX, 0xf4f8ff, gx - 3.4, p.h + 2.2, gz + 0.4, 2.6, 2.2, 1.6, 0, 0, 0.15);
-    hdeco(BOX, 0xf4f8ff, gx + 3.4, p.h + 2.2, gz + 0.4, 2.6, 2.2, 1.6, 0, 0, -0.15);
+    for (const sgn of [-1, 1]) hdeco(PRISM_GEO, 0x6b7380, gx + sgn * 3.6, p.h, gz, 2.8, 5.8, 2.8, 0, sgn * -0.4, 0, null, 'YXZ');
+    hdeco(BOX, 0x59606c, gx - 5.2, p.h, gz - 1.8, 1.6, 6.0, 1.6, 0, 0, 0.18);
+    hdeco(BOX, 0x59606c, gx + 5.2, p.h, gz - 1.8, 1.6, 6.0, 1.6, 0, 0, -0.18);
+    hdeco(BOX, 0x59606c, gx, p.h + 5.2, gz - 2.6, 11, 2.8, 4.6, 0, 0, 0);
+    // Dents acérées du haut (mâchoire supérieure)
+    for (let t = -3; t <= 3; t++) {
+      hdeco(PRISM_GEO, 0xfafcff, gx + t * 1.3, p.h + 3.8, gz - 0.4, 0.9, 1.6, 0.9, Math.PI, 0, 0);
+    }
+    // Dents acérées du bas (mâchoire inférieure)
+    for (let t = -2; t <= 2; t++) {
+      hdeco(PRISM_GEO, 0xfafcff, gx + t * 1.4, p.h + 0.2, gz + 0.2, 0.85, 1.4, 0.85, 0, 0, 0);
+    }
+    // Yeux sombres et caverneux du requin sculpté
+    hdeco(BOX, 0x111318, gx - 3.8, p.h + 4.2, gz + 0.2, 0.9, 0.6, 1.2, 0, 0, 0.25);
+    hdeco(BOX, 0x111318, gx + 3.8, p.h + 4.2, gz + 0.2, 0.9, 0.6, 1.2, 0, 0, -0.25);
     // rochers gris autour de l'île
     for (const [rx, rz, rs] of [[-14, -12, 3], [13, -14, 2.4], [16, 8, 2.8], [-16, 13, 2.2]]) {
       hdeco(BOX, 0x59606c, p.x + rx, p.h - 0.6, p.z + rz, rs, rs * 1.1, rs, 0.1, 0.4, 0.2);
@@ -2856,9 +2997,20 @@ function buildSpyPOI(p) {
       makeStructBox(dx + 4.4, p.h, dz, 1.6, 6, 2.6, matC(0x707684, { roughness: 0.8 }), { indestructible: true });
       makeStructBox(dx, p.h + 6, dz, 10.4, 1.2, 2.8, matC(0x5d6370, { roughness: 0.8 }), { indestructible: true });
       makeStructBox(dx, p.h, dz, 7.6, 5.2, 1, matC(0xffc400, { metalness: 0.75, roughness: 0.25 }), { hp: 900, mat: 'metal' });
+      // Bandes de danger jaunes & noires (hazard stripes) style base militaire Shadow
+      for (let s = 0; s < 7; s++) {
+        hdeco(BOX, s % 2 === 0 ? 0xf1c40f : 0x14141c, dx - 3.0 + s * 1.0, p.h + 5.0, dz + 0.55, 0.95, 0.5, 0.08);
+        hdeco(BOX, s % 2 === 0 ? 0xf1c40f : 0x14141c, dx - 3.0 + s * 1.0, p.h + 0.3, dz + 0.55, 0.95, 0.5, 0.08);
+      }
+      // Pistons hydrauliques d'ouverture de porte blindée
+      hdeco(CYL_GEO, 0x8a929e, dx - 3.4, p.h + 2.6, dz - 0.6, 0.35, 4.5, 0.35);
+      hdeco(CYL_GEO, 0x8a929e, dx + 3.4, p.h + 2.6, dz - 0.6, 0.35, 4.5, 0.35);
       hdeco(BOX, 0x39ff88, dx, p.h + 5.7, dz - 0.6, 4, 0.25, 0.15);
       hdeco(BOX, 0xff2e4d, dx - 4.2, p.h + 4.6, dz - 1.5, 0.4, 0.4, 0.4);
       hdeco(BOX, 0xff2e4d, dx + 4.2, p.h + 4.6, dz - 1.5, 0.4, 0.4, 0.4);
+      // Projecteur industriel jaune au-dessus de l'entrée
+      hdeco(BOX, 0xf1c40f, dx, p.h + 6.8, dz + 1.2, 1.4, 0.8, 1.2);
+      hdeco(CYL_GEO, 0xfff6bd, dx, p.h + 6.8, dz + 1.8, 0.5, 0.2, 0.5, Math.PI / 2, 0, 0);
     }
     // cuves à carburant, conteneurs et tour de contrôle
     hdeco(CYL_GEO, 0xe8e6df, p.x - 9, p.h + 1.5, p.z - 8, 2, 3, 2);
