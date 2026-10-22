@@ -1829,19 +1829,19 @@ function makeBallon(r) {
   const blue = matC(0x2f7fd8, { roughness: 0.45, metalness: 0.03 });
   const blueDark = matC(0x1d5fb0, { roughness: 0.45, metalness: 0.03 });
   const gold = matC(0xffc928, { roughness: 0.38, metalness: 0.35 });
-  const dark = matC(0x2a2f38, { roughness: 0.6, metalness: 0.3 });
+  const dark = matC(0x3a4250, { roughness: 0.6, metalness: 0.3 });
   const segs = 10;
   for (let i = 0; i < segs; i++) {
     const seg = new THREE.Mesh(new THREE.SphereGeometry(r, 12, 18, i / segs * Math.PI * 2, Math.PI * 2 / segs), i % 2 ? (i % 4 === 1 ? blueDark : blue) : white);
-    seg.castShadow = true; g.add(seg);
+    g.add(seg);
   }
   // bande dorée à l'équateur + bonnet rouge + jupe sombre à la bouche
   const band = new THREE.Mesh(new THREE.TorusGeometry(r * 0.995, r * 0.035, 8, 48), gold);
   band.rotation.x = Math.PI / 2; g.add(band);
   const cap = new THREE.Mesh(new THREE.SphereGeometry(r * 0.36, 16, 10), matC(0xe23b3b, { roughness: 0.5 }));
   cap.position.y = r * 1.01; cap.scale.set(1, 0.5, 1); g.add(cap);
-  const skirt = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.55, r * 0.7, r * 0.2, 20), dark);
-  skirt.position.y = -r * 0.93; g.add(skirt);
+  const skirt = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.5, r * 0.6, r * 0.16, 20), dark);
+  skirt.position.y = -r * 0.9; g.add(skirt);
   g.scale.y = 1.15; // un peu ovale, mais pas trop
   return g;
 }
