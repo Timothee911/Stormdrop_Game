@@ -734,6 +734,7 @@ function addDoor(s, ly, op, T, hex) {
   return d;
 }
 function destroyDoor(d) {
+  if (matchOver) return; // après le top 1, plus rien ne bouge ni ne se casse
   d.broken = true; d.open = true;
   removeCollider(d.col);
   scene.remove(d.group);
@@ -742,7 +743,7 @@ function destroyDoor(d) {
   sfxAt('break', _v1.set(d.hx, d.ly + 1.2, d.hz), 0.7);
 }
 function toggleDoor(d) {
-  if (d.broken) return;
+  if (d.broken || matchOver) return; // après le top 1, les portes restent telles quelles
   d.open = !d.open;
   d.col.passable = d.open; // ouverte : on passe à travers, fermée : elle bloque
   sfx('door', 0.6);
@@ -3482,7 +3483,7 @@ function nearestInteract() {
   for (const c of ammoBoxes) { if (c.opened) continue; const d = Math.hypot(c.x - player.pos.x, c.z - player.pos.z) + Math.abs(c.y - player.pos.y) * 0.5; if (d < bd) { bd = d; best = { type: 'ammo', c }; } }
   for (const v of vaults) { if (v.open) continue; const d = Math.hypot(v.x - player.pos.x, (v.z + 3.6) - player.pos.z) + Math.abs(v.y - player.pos.y) * 0.5; if (d < 3.2 && d < bd) { bd = d; best = { type: 'vault', v }; } }
   for (const b of booths) { const d = Math.hypot(b.x - player.pos.x, b.z - player.pos.z) + Math.abs(b.y - player.pos.y) * 0.5; if (d < 2.8 && d < bd) { bd = d; best = { type: 'booth', b }; } }
-  for (const dr of doors) { if (dr.broken) continue; const d = Math.hypot(dr.hx - player.pos.x, dr.hz - player.pos.z) + Math.abs(dr.ly - player.pos.y) * 0.5; if (d < 2.4 && d < bd) { bd = d; best = { type: 'door', dr }; } }
+  for (const dr of doors) { if (dr.broken || matchOver) continue; const d = Math.hypot(dr.hx - player.pos.x, dr.hz - player.pos.z) + Math.abs(dr.ly - player.pos.y) * 0.5; if (d < 2.4 && d < bd) { bd = d; best = { type: 'door', dr }; } }
   if (!best) for (const v of vehicles) { if (v.driver) continue; const d = Math.hypot(v.pos.x - player.pos.x, v.pos.z - player.pos.z) + Math.abs(v.pos.y - player.pos.y) * 0.3; if (d < 3.6) { best = { type: 'vehicle', v }; break; } }
   return best;
 }
