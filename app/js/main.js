@@ -781,15 +781,22 @@ function gableRoof(cx, cz, topY, w, d, roofH, bodyHex, roofHex, opts = {}) {
   const span = (alongZ ? w : d) + 0.5, len = (alongZ ? d : w) + 0.5, hs = span / 2;
   hdeco(PRISM_GEO, bodyHex, cx, topY, cz, alongZ ? span : len, roofH, alongZ ? len : span, 0, alongZ ? 0 : Math.PI / 2, 0, opts.parent);
   const th = Math.atan2(roofH, hs), pl = Math.hypot(hs, roofH) + 0.55, nx = Math.sin(th) * 0.1, ny = Math.cos(th) * 0.1;
-  // Physique du toit : deux pentes marchables, supprimées si la dalle du toit est détruite.
+  // Physique du toit : deux pentes marchables, chacune bornée à sa moitié de toit
+  // (sinon slopeH se clampe à la hauteur du faîte et le joueur flotte au-dessus de la pente).
   if (opts.parent && opts.parent.alive) {
     const axis = alongZ ? 'x' : 'z';
-    const bounds = alongZ
-      ? { minX: cx - hs - 0.3, maxX: cx + hs + 0.3, minZ: cz - len / 2 - 0.3, maxZ: cz + len / 2 + 0.3 }
-      : { minX: cx - len / 2 - 0.3, maxX: cx + len / 2 + 0.3, minZ: cz - hs - 0.3, maxZ: cz + hs + 0.3 };
-    const mk = (e0, e1) => addCollider(Object.assign({ type: 'slope', axis, e0, e1, y0: topY + 0.05, y1: topY + roofH - 0.1, minY: topY, maxY: topY + roofH }, bounds));
-    const s1 = alongZ ? mk(cx - hs, cx) : mk(cz - hs, cz);
-    const s2 = alongZ ? mk(cx + hs, cx) : mk(cz + hs, cz);
+    const y0 = topY + 0.05, y1 = topY + roofH - 0.1;
+    const mk = (e0, e1, b) => addCollider(Object.assign({ type: 'slope', axis, e0, e1, y0, y1, minY: topY, maxY: topY + roofH }, b));
+    let s1, s2;
+    if (alongZ) {
+      const zB = { minZ: cz - len / 2 - 0.3, maxZ: cz + len / 2 + 0.3 };
+      s1 = mk(cx - hs, cx, Object.assign({ minX: cx - hs - 0.3, maxX: cx + 0.3 }, zB));
+      s2 = mk(cx + hs, cx, Object.assign({ minX: cx - 0.3, maxX: cx + hs + 0.3 }, zB));
+    } else {
+      const xB = { minX: cx - len / 2 - 0.3, maxX: cx + len / 2 + 0.3 };
+      s1 = mk(cz - hs, cz, Object.assign({ minZ: cz - hs - 0.3, maxZ: cz + 0.3 }, xB));
+      s2 = mk(cz + hs, cz, Object.assign({ minZ: cz - 0.3, maxZ: cz + hs + 0.3 }, xB));
+    }
     opts.parent.subs = opts.parent.subs || [];
     opts.parent.subs.push(s1, s2);
   }
