@@ -4452,8 +4452,8 @@ function step(dt) {
   gameT += dt;
   if (matchOver) {
     // Un top 1 est décidé : la zone et le monde entier sont figés, seul le perso bouge encore.
+    // (les portes aussi sont gelées : plus rien ne bouge)
     updatePlayer(dt);
-    updateDoors(dt);
     updateMarker(dt);
     frameN++;
     for (const c of chars) if (c.isPlayer) updateChar(c, dt);
