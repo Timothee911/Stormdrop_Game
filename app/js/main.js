@@ -97,7 +97,7 @@ renderer.toneMappingExposure = 1.1;
 const scene = new THREE.Scene();
 const FOG_COL = new THREE.Color(0xbfe6ff);
 scene.fog = new THREE.Fog(FOG_COL, 140 * SET.viewDist, 520 * SET.viewDist);
-const camera = new THREE.PerspectiveCamera(SET.fov, window.innerWidth / window.innerHeight, 0.1, 1500);
+const camera = new THREE.PerspectiveCamera(SET.fov, window.innerWidth / window.innerHeight, 0.1, 2600);
 // cartoon outlines (post-process, one extra full-screen pass)
 function syncLin() { const l = outline.linear ? 1 : 0; if (skyMat) skyMat.uniforms.lin.value = l; if (storm.mesh) storm.mesh.material.uniforms.lin.value = l; }
 const outline = createOutline(renderer, { enabled: !!SET.outline, width: SET.outlineW || 1, fadeNear: 70 * SET.viewDist, fadeFar: 260 * SET.viewDist, samples: LOWQ ? 0 : HIGHQ ? 4 : 2, canvasAA: !SET.outline });
@@ -1825,9 +1825,9 @@ const leaderboard = [];
 // Le largage l'utilise en taille normale, le bus de combat en version plus grande.
 function makeBallon(r) {
   const g = new THREE.Group();
-  const white = matC(0xf2f6fa, { roughness: 0.45, metalness: 0.03 });
-  const blue = matC(0x2f7fd8, { roughness: 0.45, metalness: 0.03 });
-  const blueDark = matC(0x1d5fb0, { roughness: 0.45, metalness: 0.03 });
+  const white = matC(0xf2f6fa, { roughness: 0.45, metalness: 0.03, emissive: 0xb9c4d4, emissiveIntensity: 0.4 });
+  const blue = matC(0x2f7fd8, { roughness: 0.45, metalness: 0.03, emissive: 0x1c4d8a, emissiveIntensity: 0.4 });
+  const blueDark = matC(0x1d5fb0, { roughness: 0.45, metalness: 0.03, emissive: 0x113560, emissiveIntensity: 0.4 });
   const gold = matC(0xffc928, { roughness: 0.38, metalness: 0.35 });
   const dark = matC(0x3a4250, { roughness: 0.6, metalness: 0.3 });
   const segs = 10;
