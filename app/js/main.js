@@ -1355,6 +1355,10 @@ function rampH(c, x, z) {
   else if (c.d === 2) t = (z - z0) / CELL; else t = (x - x0) / CELL;
   return c.y + clamp(t, 0, 1) * CELL;
 }
+function slopeH(c, x, z) {
+  const t = clamp(((c.axis === 'x' ? x : z) - c.e0) / (c.e1 - c.e0), 0, 1);
+  return c.y0 + t * (c.y1 - c.y0);
+}
 function coneH(c, x, z) {
   const half = CELL / 2;
   const lx = Math.abs(x - (c.cx * CELL + half)) / half, lz = Math.abs(z - (c.cz * CELL + half)) / half;
