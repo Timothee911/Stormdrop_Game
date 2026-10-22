@@ -3421,8 +3421,7 @@ function startVictory() {
   document.getElementById('hud').classList.remove('hidden');
   document.getElementById('bigmap').classList.add('hidden');
   document.getElementById('victory').classList.remove('hidden');
-  document.getElementById('victoryQuit').style.display = 'none';
-  setTimeout(() => { document.getElementById('victoryQuit').style.display = 'block'; }, 6000);
+  setTimeout(() => { document.getElementById('victoryQuit').classList.remove('hidden'); }, 6000);
   setTimeout(() => { document.getElementById('victory').classList.add('hidden'); }, 8000);
   startConfetti();
   sfx('victory', 0.9); playMusic('victory');
@@ -3432,6 +3431,7 @@ function endGame(won) {
   if (state === 'over') return;
   matchOver = true; // la partie est finie : le monde se fige
   state = 'over';
+  document.getElementById('victoryQuit').classList.add('hidden');
   document.getElementById('victory').classList.add('hidden');
   document.getElementById('spectate').style.display = 'none';
   document.getElementById('endXp').textContent = `+${Math.round(matchXP)} XP gagnés cette partie`;
